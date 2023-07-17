@@ -1,0 +1,5 @@
+name: 'the movie db api'
+type: module
+description: 'Get movies from the movie db using their api.'
+core_version_requirement: ^10
+package: 'Custom'

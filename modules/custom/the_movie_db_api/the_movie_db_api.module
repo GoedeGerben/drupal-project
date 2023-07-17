@@ -1,0 +1,127 @@
+<?php
+/**
+ * @file
+ * This file gets the movies from the movie database and saves them.
+ */
+
+use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Serialization\Yaml;
+use GuzzleHttp\ClientInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+
+/**
+ * Custom callback for the movie search page.
+ */
+function the_movie_db_api_movie_search_page() {
+  // Trigger the movie import process.
+  the_movie_db_api_import_movies();
+
+  // Redirect the user to another page after the import is completed.
+  return;
+}
+
+/**
+ * Custom callback for importing movies from TMDB API.
+ */
+function the_movie_db_api_import_movies() {
+  // Fetch movies from TMDB API.
+  $movies = the_movie_db_api_fetch_movies();
+
+  // Create Drupal movie entities.
+  foreach ($movies as $movie) {
+    $node = \Drupal::entityTypeManager()->getStorage('node')->create([
+      'type' => 'film', 
+      'title' => $movie['title'],
+      'body' => [
+        'value' => $movie['overview'],
+        'format' => 'basic_html',
+      ],
+      'field_date' => [
+        'value' => $movie['release_date'],
+      ],
+      'field_popularity' => [
+        'value' => $movie['popularity'],
+      ],
+    ]);
+
+    if (!empty($movie['genre_ids'])) {
+      $termIds = [];
+
+      foreach ($movie['genre_ids'] as $genreId) {
+        $termIds[] = the_movie_db_api_get_or_create_term($genreId);
+      }
+
+      $node->set('field_film_genre', $termIds);
+    }
+
+    $node->save();
+  }
+
+  return [
+    '#markup' => t('Movie import completed.'),
+  ];
+}
+
+/**
+ * Get or create a taxonomy term based on the genre ID.
+ *
+ * @param int $genreId
+ *   The genre ID.
+ *
+ * @return int
+ *   The term ID.
+ */
+function the_movie_db_api_get_or_create_term($genreName) {
+  $vid = 'genre';
+  $storage = \Drupal::entityTypeManager()->getStorage('taxonomy_term');
+  $terms = $storage->loadByProperties(['vid' => $vid, 'name' => $genreName]);
+
+  if (!empty($terms)) {
+    // Return the first matching term ID.
+    return reset($terms)->id();
+  }
+
+  $term = $storage->create([
+    'vid' => $vid,
+    'name' => $genreName,
+  ]);
+  $term->save();
+
+  return $term->id();
+}
+
+/**
+ * Fetch movies from TMDB API.
+ *
+ * @return array
+ *   Array of movie data.
+ */
+function the_movie_db_api_fetch_movies() {
+  $api_key = '87b1eed5f76216a23d8d4eb44fe6f7d9';
+
+  $url = 'https://api.themoviedb.org/3/movie/popular';
+
+  $options = [
+    'query' => [
+      'api_key' => $api_key,
+    ],
+  ];
+
+  $client = \Drupal::httpClient();
+  $response = $client->get($url, $options);
+
+  $response_data = Yaml::decode($response->getBody());
+  $movies = $response_data['results'] ?? [];
+
+  return $movies;
+}
+
+/**
+ * Implements hook_entity_type_build().
+ */
+function the_movie_db_api_entity_type_build(array &$entity_types) {
+  $entity_types['node']->set('revision_table', 'node_revision');
+  $entity_types['node']->set('revision_data_table', 'node_field_revision');
+  $entity_types['node']->set('revisionable', TRUE);
+}

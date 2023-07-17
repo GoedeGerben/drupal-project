@@ -1,0 +1,6 @@
+the_movie_db_api.importMovies:
+  path: '/laad-films'
+  defaults:
+    _controller: '\Drupal\the_movie_db_api\Controller\TheMovieDbController::importMovies'
+  requirements:
+    _permission: 'access content'
